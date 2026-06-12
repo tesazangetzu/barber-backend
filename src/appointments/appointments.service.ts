@@ -115,100 +115,111 @@ export class AppointmentsService {
     dateStr: string,
   ): Promise<string[]> {
     const [year, month, day] = dateStr.split('-').map(Number);
-    const dateLima = new Date(year, month - 1, day, 0, 0, 0);
+
+    const dateLima = new Date(year, month - 1, day);
     const dayOfWeek = dateLima.getDay();
 
     const schedule = await this.scheduleRepository.findOne({
-      where: { barber_id: barberId, day_of_week: dayOfWeek },
+      where: {
+        barber_id: barberId,
+        day_of_week: dayOfWeek,
+      },
     });
 
     if (!schedule) {
       return [];
     }
 
-    const dayStart = new Date(dateLima);
-    dayStart.setHours(0, 0, 0, 0);
-    const dayEnd = new Date(dateLima);
-    dayEnd.setHours(23, 59, 59, 999);
+    const startOfDay = new Date(dateLima);
+    startOfDay.setHours(0, 0, 0, 0);
+
+    const endOfDay = new Date(dateLima);
+    endOfDay.setHours(23, 59, 59, 999);
 
     const appointments = await this.appointmentRepository.find({
-      where: [
-        {
-          barber_id: barberId,
-          status: Not(AppointmentStatus.CANCELLED),
-          start_time: Between(dayStart, dayEnd),
-        },
-        {
-          barber_id: barberId,
-          status: Not(AppointmentStatus.CANCELLED),
-          end_time: Between(dayStart, dayEnd),
-        },
-        {
-          barber_id: barberId,
-          status: Not(AppointmentStatus.CANCELLED),
-          start_time: LessThanOrEqual(dayStart),
-          end_time: MoreThanOrEqual(dayEnd),
-        },
-      ],
-      order: { start_time: 'ASC' },
+      where: {
+        barber_id: barberId,
+        status: Not(AppointmentStatus.CANCELLED),
+        start_time: LessThanOrEqual(endOfDay),
+        end_time: MoreThanOrEqual(startOfDay),
+      },
+      order: {
+        start_time: 'ASC',
+      },
     });
 
     const slots: string[] = [];
+
     const [startH, startM] = schedule.start_hour.split(':').map(Number);
     const [endH, endM] = schedule.end_hour.split(':').map(Number);
 
-    let current = new Date(dateLima);
-    current.setHours(startH, startM, 0, 0);
-    const end = new Date(dateLima);
-    end.setHours(endH, endM, 0, 0);
+    const workStart = new Date(dateLima);
+    workStart.setHours(startH, startM, 0, 0);
+
+    const workEnd = new Date(dateLima);
+    workEnd.setHours(endH, endM, 0, 0);
 
     const breakStart = schedule.break_start
       ? (() => {
-          const [bh, bm] = schedule.break_start.split(':').map(Number);
-          const breakDate = new Date(dateLima);
-          breakDate.setHours(bh, bm, 0, 0);
-          return breakDate;
+          const [h, m] = schedule.break_start.split(':').map(Number);
+          const d = new Date(dateLima);
+          d.setHours(h, m, 0, 0);
+          return d;
         })()
       : null;
 
     const breakEnd = schedule.break_end
       ? (() => {
-          const [bh, bm] = schedule.break_end.split(':').map(Number);
-          const breakDate = new Date(dateLima);
-          breakDate.setHours(bh, bm, 0, 0);
-          return breakDate;
+          const [h, m] = schedule.break_end.split(':').map(Number);
+          const d = new Date(dateLima);
+          d.setHours(h, m, 0, 0);
+          return d;
         })()
       : null;
 
-    while (current < end) {
-      const slotStart = new Date(current);
-      const slotEnd = new Date(current.getTime() + 30 * 60 * 1000);
+    // Intervalo de agenda: 30 minutos
+    const SLOT_INTERVAL_MINUTES = 30;
 
-      let isBreak = false;
-      if (breakStart && breakEnd) {
-        if (slotStart < breakEnd && slotEnd > breakStart) {
-          isBreak = true;
-        }
+    let current = new Date(workStart);
+
+    while (current < workEnd) {
+      const slotStart = new Date(current);
+
+      const slotEnd = new Date(
+        slotStart.getTime() + SLOT_INTERVAL_MINUTES * 60 * 1000,
+      );
+
+      // Evita generar slots fuera del horario laboral
+      if (slotEnd > workEnd) {
+        break;
       }
 
-      let isOverlapping = false;
-      for (const app of appointments) {
-        const appStart = new Date(app.start_time);
-        const appEnd = new Date(app.end_time);
+      const isBreak =
+        breakStart && breakEnd && slotStart < breakEnd && slotEnd > breakStart;
 
-        if (slotStart < appEnd && slotEnd > appStart) {
+      let isOverlapping = false;
+
+      for (const appointment of appointments) {
+        const appStart = new Date(appointment.start_time);
+        const appEnd = new Date(appointment.end_time);
+
+        const overlaps = slotStart < appEnd && slotEnd > appStart;
+
+        if (overlaps) {
           isOverlapping = true;
           break;
         }
       }
 
       if (!isBreak && !isOverlapping) {
-        const hours = String(slotStart.getHours()).padStart(2, '0');
-        const minutes = String(slotStart.getMinutes()).padStart(2, '0');
-        slots.push(`${hours}:${minutes}`);
+        slots.push(
+          `${String(slotStart.getHours()).padStart(2, '0')}:${String(
+            slotStart.getMinutes(),
+          ).padStart(2, '0')}`,
+        );
       }
 
-      current = slotEnd;
+      current = new Date(current.getTime() + SLOT_INTERVAL_MINUTES * 60 * 1000);
     }
 
     return slots;
