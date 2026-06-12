@@ -11,6 +11,8 @@ import {
   Not,
   LessThanOrEqual,
   MoreThanOrEqual,
+  ILike,
+  Raw,
 } from 'typeorm';
 import { toZonedTime } from 'date-fns-tz';
 import {
@@ -40,10 +42,52 @@ export class AppointmentsService {
     private readonly dataSource: DataSource,
   ) {}
 
-  async findAll(): Promise<Appointment[]> {
+  async findAll(filters?: {
+    barberId?: number;
+    startDate?: string;
+    endDate?: string;
+    search?: string;
+    withCancelled?: boolean;
+    order?: 'ASC' | 'DESC';
+  }): Promise<Appointment[]> {
+    const where: any = {};
+
+    if (filters?.barberId) {
+      where.barber_id = filters.barberId;
+    }
+
+    if (filters?.startDate && filters?.endDate) {
+      where.start_time = Raw(
+        (alias) => `DATE(${alias}) BETWEEN :start AND :end`,
+        {
+          start: filters.startDate,
+          end: filters.endDate,
+        },
+      );
+    } else if (filters?.startDate) {
+      where.start_time = Raw((alias) => `DATE(${alias}) >= :start`, {
+        start: filters.startDate,
+      });
+    } else if (filters?.endDate) {
+      where.start_time = Raw((alias) => `DATE(${alias}) <= :end`, {
+        end: filters.endDate,
+      });
+    }
+
+    if (!filters?.withCancelled) {
+      where.status = Not(AppointmentStatus.CANCELLED);
+    }
+
+    if (filters?.search) {
+      where.client_name = ILike(`%${filters.search}%`);
+    }
+
     return this.appointmentRepository.find({
+      where,
       relations: ['barber', 'service'],
-      order: { start_time: 'ASC' },
+      order: {
+        start_time: filters?.order ?? 'ASC',
+      },
     });
   }
 

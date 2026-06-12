@@ -24,6 +24,7 @@ import {
 import { AppointmentsService } from './appointments.service';
 import { AppointmentsDateInterceptor } from './interceptors/appointments-date.interceptor';
 import { CreateAppointmentDto } from './dto/create-appointment.dto';
+import { FilterAppointmentsDto } from './dto/filter-appointments.dto';
 import {
   Appointment,
   AppointmentStatus,
@@ -39,12 +40,55 @@ export class AppointmentsController {
   constructor(private readonly appointmentsService: AppointmentsService) {}
 
   @Get()
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth('access-token')
+  @UsePipes(new ValidationPipe({ transform: true }))
   @ApiOperation({
     summary: 'Obtener todas las citas',
     description:
-      'Retorna una lista de todas las citas (requiere autenticación)',
+      'Retorna una lista de todas las citas con filtros opcionales (requiere autenticación)',
+  })
+  @ApiQuery({
+    name: 'barber_id',
+    required: false,
+    description: 'Filtrar por ID del barbero',
+    type: Number,
+    example: 4,
+  })
+  @ApiQuery({
+    name: 'search',
+    required: false,
+    description: 'Buscar por nombre del cliente',
+    type: String,
+    example: 'Juan',
+  })
+  @ApiQuery({
+    name: 'start_date',
+    required: false,
+    description:
+      'Desde fecha (inclusive, formato ISO: YYYY-MM-DD o YYYY-MM-DDTHH:mm:ss)',
+    type: String,
+    example: '2026-06-01',
+  })
+  @ApiQuery({
+    name: 'end_date',
+    required: false,
+    description:
+      'Hasta fecha (inclusive, formato ISO: YYYY-MM-DD o YYYY-MM-DDTHH:mm:ss)',
+    type: String,
+    example: '2026-06-30',
+  })
+  @ApiQuery({
+    name: 'with_cancelled',
+    required: false,
+    description: 'Incluir citas canceladas',
+    type: Boolean,
+    example: false,
+  })
+  @ApiQuery({
+    name: 'order',
+    required: false,
+    description: 'Ordenar por fecha de inicio (ASC o DESC)',
+    type: String,
+    example: 'DESC',
   })
   @ApiResponse({
     status: 200,
@@ -52,8 +96,17 @@ export class AppointmentsController {
     type: [Appointment],
   })
   @ApiResponse({ status: 401, description: 'No autorizado' })
-  async findAll(): Promise<Appointment[]> {
-    return this.appointmentsService.findAll();
+  async findAll(
+    @Query() filters: FilterAppointmentsDto,
+  ): Promise<Appointment[]> {
+    return this.appointmentsService.findAll({
+      barberId: filters.barber_id,
+      startDate: filters.start_date,
+      endDate: filters.end_date,
+      search: filters.search,
+      withCancelled: filters.with_cancelled,
+      order: filters.order,
+    });
   }
 
   @Get('barber/:barberId/today')
