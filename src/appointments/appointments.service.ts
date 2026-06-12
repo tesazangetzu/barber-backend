@@ -1,0 +1,352 @@
+import {
+  Injectable,
+  BadRequestException,
+  NotFoundException,
+} from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import {
+  Repository,
+  DataSource,
+  Between,
+  Not,
+  LessThanOrEqual,
+  MoreThanOrEqual,
+} from 'typeorm';
+import { toZonedTime } from 'date-fns-tz';
+import {
+  Appointment,
+  AppointmentStatus,
+  PaymentStatus,
+  PaymentMethod,
+} from './entities/appointment.entity';
+import { Barber } from '../barbers/entities/barber.entity';
+import { Service } from '../services/entities/service.entity';
+import { BarberSchedule } from '../schedules/entities/schedule.entity';
+import { CreateAppointmentDto } from './dto/create-appointment.dto';
+
+const TIMEZONE = 'America/Lima';
+
+@Injectable()
+export class AppointmentsService {
+  constructor(
+    @InjectRepository(Appointment)
+    private readonly appointmentRepository: Repository<Appointment>,
+    @InjectRepository(Barber)
+    private readonly barberRepository: Repository<Barber>,
+    @InjectRepository(Service)
+    private readonly serviceRepository: Repository<Service>,
+    @InjectRepository(BarberSchedule)
+    private readonly scheduleRepository: Repository<BarberSchedule>,
+    private readonly dataSource: DataSource,
+  ) {}
+
+  async findAll(): Promise<Appointment[]> {
+    return this.appointmentRepository.find({
+      relations: ['barber', 'service'],
+      order: { start_time: 'ASC' },
+    });
+  }
+
+  async findTodayByBarber(barberId: number): Promise<Appointment[]> {
+    const nowUtc = new Date();
+    const nowLima = toZonedTime(nowUtc, TIMEZONE);
+    const todayStart = new Date(nowLima);
+    todayStart.setHours(0, 0, 0, 0);
+    const todayEnd = new Date(nowLima);
+    todayEnd.setHours(23, 59, 59, 999);
+
+    return this.appointmentRepository.find({
+      where: {
+        barber_id: barberId,
+        start_time: Between(todayStart, todayEnd),
+        status: Not(AppointmentStatus.CANCELLED),
+      },
+      relations: ['service'],
+      order: { start_time: 'ASC' },
+    });
+  }
+
+  async getAvailableSlots(
+    barberId: number,
+    dateStr: string,
+  ): Promise<string[]> {
+    const [year, month, day] = dateStr.split('-').map(Number);
+    const dateLima = new Date(year, month - 1, day, 0, 0, 0);
+    const dayOfWeek = dateLima.getDay();
+
+    const schedule = await this.scheduleRepository.findOne({
+      where: { barber_id: barberId, day_of_week: dayOfWeek },
+    });
+
+    if (!schedule) {
+      return [];
+    }
+
+    const dayStart = new Date(dateLima);
+    dayStart.setHours(0, 0, 0, 0);
+    const dayEnd = new Date(dateLima);
+    dayEnd.setHours(23, 59, 59, 999);
+
+    const appointments = await this.appointmentRepository.find({
+      where: [
+        {
+          barber_id: barberId,
+          status: Not(AppointmentStatus.CANCELLED),
+          start_time: Between(dayStart, dayEnd),
+        },
+        {
+          barber_id: barberId,
+          status: Not(AppointmentStatus.CANCELLED),
+          end_time: Between(dayStart, dayEnd),
+        },
+        {
+          barber_id: barberId,
+          status: Not(AppointmentStatus.CANCELLED),
+          start_time: LessThanOrEqual(dayStart),
+          end_time: MoreThanOrEqual(dayEnd),
+        },
+      ],
+      order: { start_time: 'ASC' },
+    });
+
+    const slots: string[] = [];
+    const [startH, startM] = schedule.start_hour.split(':').map(Number);
+    const [endH, endM] = schedule.end_hour.split(':').map(Number);
+
+    let current = new Date(dateLima);
+    current.setHours(startH, startM, 0, 0);
+    const end = new Date(dateLima);
+    end.setHours(endH, endM, 0, 0);
+
+    const breakStart = schedule.break_start
+      ? (() => {
+          const [bh, bm] = schedule.break_start.split(':').map(Number);
+          const breakDate = new Date(dateLima);
+          breakDate.setHours(bh, bm, 0, 0);
+          return breakDate;
+        })()
+      : null;
+
+    const breakEnd = schedule.break_end
+      ? (() => {
+          const [bh, bm] = schedule.break_end.split(':').map(Number);
+          const breakDate = new Date(dateLima);
+          breakDate.setHours(bh, bm, 0, 0);
+          return breakDate;
+        })()
+      : null;
+
+    while (current < end) {
+      const slotStart = new Date(current);
+      const slotEnd = new Date(current.getTime() + 30 * 60 * 1000);
+
+      let isBreak = false;
+      if (breakStart && breakEnd) {
+        if (slotStart < breakEnd && slotEnd > breakStart) {
+          isBreak = true;
+        }
+      }
+
+      let isOverlapping = false;
+      for (const app of appointments) {
+        const appStart = new Date(app.start_time);
+        const appEnd = new Date(app.end_time);
+
+        if (slotStart < appEnd && slotEnd > appStart) {
+          isOverlapping = true;
+          break;
+        }
+      }
+
+      if (!isBreak && !isOverlapping) {
+        const hours = String(slotStart.getHours()).padStart(2, '0');
+        const minutes = String(slotStart.getMinutes()).padStart(2, '0');
+        slots.push(`${hours}:${minutes}`);
+      }
+
+      current = slotEnd;
+    }
+
+    return slots;
+  }
+
+  async createAppointment(
+    createDto: CreateAppointmentDto,
+  ): Promise<Appointment> {
+    const {
+      barber_id,
+      service_id,
+      start_time,
+      client_name,
+      client_phone,
+      client_email,
+    } = createDto;
+
+    // 1. Fetch Service to calculate end time based on duration
+    const service = await this.serviceRepository.findOne({
+      where: { id: service_id },
+    });
+    if (!service || !service.is_active) {
+      throw new BadRequestException(
+        'El servicio seleccionado no está activo o no existe.',
+      );
+    }
+
+    const barber = await this.barberRepository.findOne({
+      where: { id: barber_id },
+    });
+    if (!barber || !barber.is_active) {
+      throw new BadRequestException(
+        'El barbero seleccionado no está activo o no existe.',
+      );
+    }
+
+    // Parse start_time as Lima local wall time
+    const parsed = start_time.match(
+      /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.\d{1,3})?)?(?:Z|[+-]\d{2}:?\d{2})?$/,
+    );
+    if (!parsed) {
+      throw new BadRequestException('Formato de fecha inválido.');
+    }
+
+    const [, year, month, day, hour, minute, second = '0'] = parsed;
+    const appStart = new Date(
+      Number(year),
+      Number(month) - 1,
+      Number(day),
+      Number(hour),
+      Number(minute),
+      Number(second),
+    );
+
+    const appEnd = new Date(
+      appStart.getTime() + service.duration_minutes * 60 * 1000,
+    );
+
+    // 2. Perform transactional double-booking prevention
+    return this.dataSource.transaction(async (entityManager) => {
+      const conflicting = await entityManager
+        .createQueryBuilder(Appointment, 'appointment')
+        .setLock('pessimistic_write')
+        .where('appointment.barber_id = :barberId', { barberId: barber_id })
+        .andWhere('appointment.status != :cancelled', {
+          cancelled: AppointmentStatus.CANCELLED,
+        })
+        .andWhere(
+          'appointment.start_time < :appEnd AND appointment.end_time > :appStart',
+          {
+            appStart,
+            appEnd,
+          },
+        )
+        .getOne();
+
+      if (conflicting) {
+        throw new BadRequestException(
+          'El horario seleccionado ya ha sido reservado por otro cliente.',
+        );
+      }
+
+      const dayOfWeek = appStart.getDay();
+      const schedule = await entityManager.findOne(BarberSchedule, {
+        where: { barber_id: barber_id, day_of_week: dayOfWeek },
+      });
+
+      if (!schedule) {
+        throw new BadRequestException(
+          'El barbero no trabaja en el día seleccionado.',
+        );
+      }
+
+      const workStart = new Date(appStart);
+      const [startH, startM] = schedule.start_hour.split(':').map(Number);
+      workStart.setHours(startH, startM, 0, 0);
+
+      const workEnd = new Date(appStart);
+      const [endH, endM] = schedule.end_hour.split(':').map(Number);
+      workEnd.setHours(endH, endM, 0, 0);
+
+      if (appStart < workStart || appEnd > workEnd) {
+        throw new BadRequestException(
+          'La cita está fuera del horario laboral del barbero.',
+        );
+      }
+
+      if (schedule.break_start && schedule.break_end) {
+        const breakStart = new Date(appStart);
+        const [bsh, bsm] = schedule.break_start.split(':').map(Number);
+        breakStart.setHours(bsh, bsm, 0, 0);
+
+        const breakEnd = new Date(appStart);
+        const [beh, bem] = schedule.break_end.split(':').map(Number);
+        breakEnd.setHours(beh, bem, 0, 0);
+
+        if (appStart < breakEnd && appEnd > breakStart) {
+          throw new BadRequestException(
+            'El horario seleccionado coincide con el descanso del barbero.',
+          );
+        }
+      }
+
+      const appointment = entityManager.create(Appointment, {
+        barber_id: barber.id,
+        service_id: service.id,
+        client_name,
+        client_phone,
+        client_email,
+        start_time: appStart,
+        end_time: appEnd,
+        status: AppointmentStatus.CONFIRMED,
+        payment_status: PaymentStatus.PENDING,
+        payment_method: PaymentMethod.LOCAL,
+      });
+
+      const saved = await entityManager.save(appointment);
+
+      // Load relations to return a complete object
+      return entityManager.findOne(Appointment, {
+        where: { id: saved.id },
+        relations: ['barber', 'service'],
+      }) as Promise<Appointment>;
+    });
+  }
+
+  async updateStatus(
+    id: number,
+    status: AppointmentStatus,
+  ): Promise<Appointment> {
+    const appointment = await this.appointmentRepository.findOne({
+      where: { id },
+      relations: ['barber', 'service'],
+    });
+
+    if (!appointment) {
+      throw new NotFoundException(`Cita con ID ${id} no encontrada`);
+    }
+
+    appointment.status = status;
+    return this.appointmentRepository.save(appointment);
+  }
+
+  async updatePaymentStatus(
+    id: number,
+    paymentStatus: PaymentStatus,
+    method?: PaymentMethod,
+    paymentId?: string,
+  ): Promise<Appointment> {
+    const appointment = await this.appointmentRepository.findOne({
+      where: { id },
+      relations: ['barber', 'service'],
+    });
+
+    if (!appointment) {
+      throw new NotFoundException(`Cita con ID ${id} no encontrada`);
+    }
+
+    appointment.payment_status = paymentStatus;
+    if (method) appointment.payment_method = method;
+    if (paymentId) appointment.payment_id = paymentId;
+
+    return this.appointmentRepository.save(appointment);
+  }
+}
