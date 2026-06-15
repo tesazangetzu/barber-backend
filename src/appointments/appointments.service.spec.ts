@@ -117,7 +117,7 @@ describe('AppointmentsService', () => {
       client_name: 'Alejandro Ruiz',
       client_phone: '+525544332211',
       client_email: 'alejandro@gmail.com',
-      start_time: '2026-05-20T09:30:00Z',
+      start_time: '2026-05-20T09:30:00',
     };
 
     const mockService = {
@@ -157,8 +157,8 @@ describe('AppointmentsService', () => {
         client_name: 'Alejandro Ruiz',
         client_phone: '+525544332211',
         client_email: 'alejandro@gmail.com',
-        start_time: new Date('2026-05-20T09:30:00Z'),
-        end_time: new Date('2026-05-20T10:00:00Z'),
+        start_time: new Date('2026-05-20T09:30:00'),
+        end_time: new Date('2026-05-20T10:00:00'),
         status: AppointmentStatus.CONFIRMED,
         payment_status: PaymentStatus.PENDING,
         payment_method: PaymentMethod.LOCAL,
@@ -196,8 +196,8 @@ describe('AppointmentsService', () => {
       mockQueryBuilder.getOne.mockResolvedValue({
         id: 99,
         barber_id: 1,
-        start_time: new Date('2026-05-20T09:30:00Z'),
-        end_time: new Date('2026-05-20T10:00:00Z'),
+        start_time: new Date('2026-05-20T09:30:00'),
+        end_time: new Date('2026-05-20T10:00:00'),
       });
 
       await expect(service.createAppointment(createDto)).rejects.toThrow(
@@ -225,7 +225,7 @@ describe('AppointmentsService', () => {
       // Slot at 08:30 is before barber starts working (starts at 09:00)
       const earlyDto = {
         ...createDto,
-        start_time: '2026-05-20T08:30:00Z',
+        start_time: '2026-05-20T08:30:00',
       };
 
       mockEntityManager.findOne.mockResolvedValue(mockSchedule);
@@ -245,7 +245,7 @@ describe('AppointmentsService', () => {
       // Slot at 13:30 overlaps with break (13:00 - 14:00)
       const breakDto = {
         ...createDto,
-        start_time: '2026-05-20T13:30:00Z',
+        start_time: '2026-05-20T13:30:00',
       };
 
       mockEntityManager.findOne.mockResolvedValue(mockSchedule);

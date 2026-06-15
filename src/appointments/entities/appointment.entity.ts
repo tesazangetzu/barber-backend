@@ -31,65 +31,65 @@ export enum PaymentMethod {
 @Entity('appointments')
 export class Appointment {
   @PrimaryGeneratedColumn()
-  id: number;
+  'id': number;
 
   @Column({ type: 'int' })
-  barber_id: number;
+  'barber_id': number;
 
   @Column({ type: 'int' })
-  service_id: number;
+  'service_id': number;
 
   @Column({ type: 'varchar', length: 150 })
-  client_name: string;
+  'client_name': string;
 
   @Column({ type: 'varchar', length: 20 })
-  client_phone: string;
+  'client_phone': string;
 
   @Column({ type: 'varchar', length: 150, nullable: true })
-  client_email: string;
+  'client_email': string;
 
-  @Column({ type: 'timestamp' })
-  start_time: Date;
+  @Column({ type: 'timestamptz' })
+  'start_time': Date;
 
-  @Column({ type: 'timestamp' })
-  end_time: Date;
+  @Column({ type: 'timestamptz' })
+  'end_time': Date;
 
   @Column({
     type: 'enum',
     enum: AppointmentStatus,
     default: AppointmentStatus.CONFIRMED,
   })
-  status: AppointmentStatus;
+  'status': AppointmentStatus;
 
   @Column({
     type: 'enum',
     enum: PaymentStatus,
     default: PaymentStatus.PENDING,
   })
-  payment_status: PaymentStatus;
+  'payment_status': PaymentStatus;
 
   @Column({
     type: 'enum',
     enum: PaymentMethod,
     default: PaymentMethod.LOCAL,
   })
-  payment_method: PaymentMethod;
+  'payment_method': PaymentMethod;
 
   @Column({ type: 'varchar', length: 255, nullable: true })
-  payment_id: string;
+  'payment_id': string;
 
-  @CreateDateColumn({ type: 'timestamp' })
-  created_at: Date;
+  @CreateDateColumn({ type: 'timestamptz' })
+  'created_at': Date;
 
   @ManyToOne(() => Barber, (barber) => barber.appointments, {
     onDelete: 'RESTRICT',
   })
   @JoinColumn({ name: 'barber_id' })
-  barber: Barber;
+  'barber': Barber;
 
   @ManyToOne(() => Service, (service) => service.appointments, {
     onDelete: 'RESTRICT',
   })
   @JoinColumn({ name: 'service_id' })
-  service: Service;
+  'service': Service;
 }
