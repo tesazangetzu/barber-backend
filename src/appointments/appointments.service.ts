@@ -404,4 +404,45 @@ export class AppointmentsService {
 
     return this.appointmentRepository.save(appointment);
   }
+
+  async updateService(
+    id: number,
+    serviceId: number,
+  ): Promise<Appointment> {
+    const appointment = await this.appointmentRepository.findOne({
+      where: { id },
+      relations: ['barber', 'service'],
+    });
+
+    if (!appointment) {
+      throw new NotFoundException(`Cita con ID ${id} no encontrada`);
+    }
+
+    if (appointment.status !== AppointmentStatus.CONFIRMED) {
+      throw new BadRequestException(
+        'Solo se puede cambiar el servicio de citas en estado CONFIRMED.',
+      );
+    }
+
+    const service = await this.serviceRepository.findOne({
+      where: { id: serviceId },
+    });
+    if (!service || !service.is_active) {
+      throw new BadRequestException(
+        'El servicio seleccionado no está activo o no existe.',
+      );
+    }
+
+    appointment.service_id = service.id;
+    appointment.service = service;
+
+    // Recalculate end_time based on new service duration
+    const appStart = new Date(appointment.start_time);
+    const appEnd = new Date(
+      appStart.getTime() + service.duration_minutes * 60 * 1000,
+    );
+    appointment.end_time = appEnd;
+
+    return this.appointmentRepository.save(appointment);
+  }
 }

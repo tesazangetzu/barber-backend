@@ -206,6 +206,38 @@ export class AppointmentsController {
     return this.appointmentsService.updateStatus(id, status);
   }
 
+  @Patch(':id/service')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Actualizar servicio de una cita',
+    description:
+      'Actualiza el servicio de una cita solo si está en estado CONFIRMED. Recalcula la hora de fin.',
+  })
+  @ApiParam({ name: 'id', description: 'ID de la cita', type: 'number' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        service_id: { type: 'number', example: 2 },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Servicio actualizado exitosamente',
+    type: Appointment,
+  })
+  @ApiResponse({ status: 400, description: 'Solo disponible en estado CONFIRMED' })
+  @ApiResponse({ status: 401, description: 'No autorizado' })
+  @ApiResponse({ status: 404, description: 'Cita no encontrada' })
+  async updateService(
+    @Param('id', ParseIntPipe) id: number,
+    @Body('service_id', ParseIntPipe) serviceId: number,
+  ): Promise<Appointment> {
+    return this.appointmentsService.updateService(id, serviceId);
+  }
+
   @Patch(':id/payment')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('access-token')
