@@ -14,7 +14,7 @@ import {
   ILike,
   Raw,
 } from 'typeorm';
-import { toZonedTime, fromZonedTime } from 'date-fns-tz';
+import { toZonedTime } from 'date-fns-tz';
 import {
   Appointment,
   AppointmentStatus,
@@ -264,11 +264,7 @@ export class AppointmentsService {
       throw new BadRequestException('Formato de fecha inválido.');
     }
 
-    const [, year, month, day, hour, minute, second = '0'] = parsed;
-    const appStart = fromZonedTime(
-      `${year}-${month}-${day}T${hour}:${minute}:${second}`,
-      TIMEZONE,
-    );
+    const appStart = new Date(start_time);
 
     const appEnd = new Date(
       appStart.getTime() + service.duration_minutes * 60 * 1000,
