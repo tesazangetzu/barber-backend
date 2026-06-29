@@ -14,7 +14,7 @@ import {
   ILike,
   Raw,
 } from 'typeorm';
-import { toZonedTime } from 'date-fns-tz';
+import { toZonedTime, fromZonedTime } from 'date-fns-tz';
 import {
   Appointment,
   AppointmentStatus,
@@ -265,13 +265,9 @@ export class AppointmentsService {
     }
 
     const [, year, month, day, hour, minute, second = '0'] = parsed;
-    const appStart = new Date(
-      Number(year),
-      Number(month) - 1,
-      Number(day),
-      Number(hour),
-      Number(minute),
-      Number(second),
+    const appStart = fromZonedTime(
+      `${year}-${month}-${day}T${hour}:${minute}:${second}`,
+      TIMEZONE,
     );
 
     const appEnd = new Date(
