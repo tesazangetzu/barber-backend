@@ -18,7 +18,7 @@ function toLimaISOString(date: Date): string {
   const h = String(d.getHours()).padStart(2, '0');
   const m = String(d.getMinutes()).padStart(2, '0');
   const s = String(d.getSeconds()).padStart(2, '0');
-  return `${y}-${M}-${D}T${h}:${m}:${s}`;
+  return `${y}-${M}-${D}T${h}:${m}:${s}-05:00`;
 }
 
 @Injectable()

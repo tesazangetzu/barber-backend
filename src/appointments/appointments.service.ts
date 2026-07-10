@@ -58,20 +58,27 @@ export class AppointmentsService {
 
     if (filters?.startDate && filters?.endDate) {
       where.start_time = Raw(
-        (alias) => `DATE(${alias}) BETWEEN :start AND :end`,
+        (alias) =>
+          `(${alias} AT TIME ZONE 'America/Lima')::date BETWEEN :start AND :end`,
         {
           start: filters.startDate,
           end: filters.endDate,
         },
       );
     } else if (filters?.startDate) {
-      where.start_time = Raw((alias) => `DATE(${alias}) >= :start`, {
-        start: filters.startDate,
-      });
+      where.start_time = Raw(
+        (alias) => `(${alias} AT TIME ZONE 'America/Lima')::date >= :start`,
+        {
+          start: filters.startDate,
+        },
+      );
     } else if (filters?.endDate) {
-      where.start_time = Raw((alias) => `DATE(${alias}) <= :end`, {
-        end: filters.endDate,
-      });
+      where.start_time = Raw(
+        (alias) => `(${alias} AT TIME ZONE 'America/Lima')::date <= :end`,
+        {
+          end: filters.endDate,
+        },
+      );
     }
 
     if (!filters?.withCancelled) {
@@ -92,17 +99,20 @@ export class AppointmentsService {
   }
 
   async findTodayByBarber(barberId: number): Promise<Appointment[]> {
-    const nowUtc = new Date();
-    const nowLima = toZonedTime(nowUtc, TIMEZONE);
-    const todayStart = new Date(nowLima);
-    todayStart.setHours(0, 0, 0, 0);
-    const todayEnd = new Date(nowLima);
-    todayEnd.setHours(23, 59, 59, 999);
+    const now = new Date();
+    const nowLima = toZonedTime(now, TIMEZONE);
+    const y = nowLima.getFullYear();
+    const M = String(nowLima.getMonth() + 1).padStart(2, '0');
+    const D = String(nowLima.getDate()).padStart(2, '0');
+    const todayStr = `${y}-${M}-${D}`;
+
+    const dayStart = new Date(`${todayStr}T00:00:00-05:00`);
+    const dayEnd = new Date(`${todayStr}T23:59:59.999-05:00`);
 
     return this.appointmentRepository.find({
       where: {
         barber_id: barberId,
-        start_time: Between(todayStart, todayEnd),
+        start_time: Between(dayStart, dayEnd),
         status: Not(AppointmentStatus.CANCELLED),
       },
       relations: ['service'],
@@ -113,16 +123,15 @@ export class AppointmentsService {
   async getAvailableSlots(
     barberId: number,
     dateStr: string,
+    serviceId?: number,
   ): Promise<string[]> {
-    const [year, month, day] = dateStr.split('-').map(Number);
-
-    const dateLima = new Date(year, month - 1, day);
-    const dayOfWeek = dateLima.getDay();
+    const dayStart = new Date(`${dateStr}T00:00:00-05:00`);
+    const dayEnd = new Date(`${dateStr}T23:59:59.999-05:00`);
 
     const schedule = await this.scheduleRepository.findOne({
       where: {
         barber_id: barberId,
-        day_of_week: dayOfWeek,
+        day_of_week: dayStart.getUTCDay(),
       },
     });
 
@@ -130,92 +139,82 @@ export class AppointmentsService {
       return [];
     }
 
-    const startOfDay = new Date(dateLima);
-    startOfDay.setHours(0, 0, 0, 0);
-
-    const endOfDay = new Date(dateLima);
-    endOfDay.setHours(23, 59, 59, 999);
-
     const appointments = await this.appointmentRepository.find({
       where: {
         barber_id: barberId,
         status: Not(AppointmentStatus.CANCELLED),
-        start_time: LessThanOrEqual(endOfDay),
-        end_time: MoreThanOrEqual(startOfDay),
+        start_time: LessThanOrEqual(dayEnd),
+        end_time: MoreThanOrEqual(dayStart),
       },
       order: {
         start_time: 'ASC',
       },
     });
 
-    const slots: string[] = [];
+    let durationMinutes = 30;
+    if (serviceId) {
+      const service = await this.serviceRepository.findOne({
+        where: { id: serviceId, is_active: true },
+      });
+      if (service) {
+        durationMinutes = service.duration_minutes;
+      }
+    }
 
-    const [startH, startM] = schedule.start_hour.split(':').map(Number);
-    const [endH, endM] = schedule.end_hour.split(':').map(Number);
-
-    const workStart = new Date(dateLima);
-    workStart.setHours(startH, startM, 0, 0);
-
-    const workEnd = new Date(dateLima);
-    workEnd.setHours(endH, endM, 0, 0);
-
+    const workStart = new Date(`${dateStr}T${schedule.start_hour}-05:00`);
+    const workEnd = new Date(`${dateStr}T${schedule.end_hour}-05:00`);
     const breakStart = schedule.break_start
-      ? (() => {
-          const [h, m] = schedule.break_start.split(':').map(Number);
-          const d = new Date(dateLima);
-          d.setHours(h, m, 0, 0);
-          return d;
-        })()
+      ? new Date(`${dateStr}T${schedule.break_start}-05:00`)
       : null;
-
     const breakEnd = schedule.break_end
-      ? (() => {
-          const [h, m] = schedule.break_end.split(':').map(Number);
-          const d = new Date(dateLima);
-          d.setHours(h, m, 0, 0);
-          return d;
-        })()
+      ? new Date(`${dateStr}T${schedule.break_end}-05:00`)
       : null;
 
-    // Intervalo de agenda: 30 minutos
     const SLOT_INTERVAL_MINUTES = 30;
-
+    const slots: string[] = [];
     let current = new Date(workStart);
 
     while (current < workEnd) {
       const slotStart = new Date(current);
-
       const slotEnd = new Date(
-        slotStart.getTime() + SLOT_INTERVAL_MINUTES * 60 * 1000,
+        slotStart.getTime() + durationMinutes * 60 * 1000,
       );
 
-      // Evita generar slots fuera del horario laboral
       if (slotEnd > workEnd) {
-        break;
+        current = new Date(
+          current.getTime() + SLOT_INTERVAL_MINUTES * 60 * 1000,
+        );
+        continue;
       }
 
-      const isBreak =
-        breakStart && breakEnd && slotStart < breakEnd && slotEnd > breakStart;
+      if (
+        breakStart &&
+        breakEnd &&
+        slotStart < breakEnd &&
+        slotEnd > breakStart
+      ) {
+        current = new Date(
+          current.getTime() + SLOT_INTERVAL_MINUTES * 60 * 1000,
+        );
+        continue;
+      }
 
       let isOverlapping = false;
-
       for (const appointment of appointments) {
         const appStart = new Date(appointment.start_time);
-        const appEnd = new Date(appointment.end_time);
+        const appEndExisting = new Date(appointment.end_time);
 
-        const overlaps = slotStart < appEnd && slotEnd > appStart;
-
-        if (overlaps) {
+        if (slotStart < appEndExisting && slotEnd > appStart) {
           isOverlapping = true;
           break;
         }
       }
 
-      if (!isBreak && !isOverlapping) {
+      if (!isOverlapping) {
+        const h = (slotStart.getUTCHours() - 5 + 24) % 24;
+        const m = slotStart.getUTCMinutes();
         slots.push(
-          `${String(slotStart.getHours()).padStart(2, '0')}:${String(
-            slotStart.getMinutes(),
-          ).padStart(2, '0')}`,
+          `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`,
         );
       }
 
@@ -256,15 +255,12 @@ export class AppointmentsService {
       );
     }
 
-    // Parse start_time as Lima local wall time
-    const parsed = start_time.match(
-      /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.\d{1,3})?)?(?:Z|[+-]\d{2}:?\d{2})?$/,
-    );
-    if (!parsed) {
+    let appStart: Date;
+    try {
+      appStart = toZonedTime(start_time, TIMEZONE);
+    } catch {
       throw new BadRequestException('Formato de fecha inválido.');
     }
-
-    const appStart = new Date(start_time);
 
     const appEnd = new Date(
       appStart.getTime() + service.duration_minutes * 60 * 1000,
@@ -305,13 +301,13 @@ export class AppointmentsService {
         );
       }
 
-      const workStart = new Date(appStart);
-      const [startH, startM] = schedule.start_hour.split(':').map(Number);
-      workStart.setHours(startH, startM, 0, 0);
+      const y = appStart.getFullYear();
+      const M = String(appStart.getMonth() + 1).padStart(2, '0');
+      const D = String(appStart.getDate()).padStart(2, '0');
+      const limaDate = `${y}-${M}-${D}`;
 
-      const workEnd = new Date(appStart);
-      const [endH, endM] = schedule.end_hour.split(':').map(Number);
-      workEnd.setHours(endH, endM, 0, 0);
+      const workStart = new Date(`${limaDate}T${schedule.start_hour}-05:00`);
+      const workEnd = new Date(`${limaDate}T${schedule.end_hour}-05:00`);
 
       if (appStart < workStart || appEnd > workEnd) {
         throw new BadRequestException(
@@ -320,13 +316,10 @@ export class AppointmentsService {
       }
 
       if (schedule.break_start && schedule.break_end) {
-        const breakStart = new Date(appStart);
-        const [bsh, bsm] = schedule.break_start.split(':').map(Number);
-        breakStart.setHours(bsh, bsm, 0, 0);
-
-        const breakEnd = new Date(appStart);
-        const [beh, bem] = schedule.break_end.split(':').map(Number);
-        breakEnd.setHours(beh, bem, 0, 0);
+        const breakStart = new Date(
+          `${limaDate}T${schedule.break_start}-05:00`,
+        );
+        const breakEnd = new Date(`${limaDate}T${schedule.break_end}-05:00`);
 
         if (appStart < breakEnd && appEnd > breakStart) {
           throw new BadRequestException(
@@ -397,10 +390,7 @@ export class AppointmentsService {
     return this.appointmentRepository.save(appointment);
   }
 
-  async updateService(
-    id: number,
-    serviceId: number,
-  ): Promise<Appointment> {
+  async updateService(id: number, serviceId: number): Promise<Appointment> {
     const appointment = await this.appointmentRepository.findOne({
       where: { id },
       relations: ['barber', 'service'],

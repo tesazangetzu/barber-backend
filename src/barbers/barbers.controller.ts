@@ -7,6 +7,8 @@ import {
   Body,
   Patch,
   Delete,
+  ClassSerializerInterceptor,
+  UseInterceptors,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam } from '@nestjs/swagger';
 import { BarbersService } from './barbers.service';
@@ -16,6 +18,7 @@ import { UpdateBarberDto } from './dto/update-barber.dto';
 
 @ApiTags('barbers')
 @Controller('barbers')
+@UseInterceptors(ClassSerializerInterceptor)
 export class BarbersController {
   constructor(private readonly barbersService: BarbersService) {}
 

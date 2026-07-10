@@ -1,4 +1,5 @@
 import { Entity, PrimaryGeneratedColumn, Column, OneToMany } from 'typeorm';
+import { Exclude } from 'class-transformer';
 import { Appointment } from '../../appointments/entities/appointment.entity';
 import { BarberSchedule } from '../../schedules/entities/schedule.entity';
 
@@ -14,6 +15,7 @@ export class Barber {
   email: string;
 
   @Column({ type: 'varchar', length: 255 })
+  @Exclude()
   password_hash: string;
 
   @Column({ type: 'varchar', length: 20, nullable: true })

@@ -11,6 +11,7 @@ import {
   UsePipes,
   UseInterceptors,
   ValidationPipe,
+  ClassSerializerInterceptor,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -35,7 +36,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
 @ApiTags('appointments')
 @Controller('appointments')
-@UseInterceptors(AppointmentsDateInterceptor)
+@UseInterceptors(AppointmentsDateInterceptor, ClassSerializerInterceptor)
 export class AppointmentsController {
   constructor(private readonly appointmentsService: AppointmentsService) {}
 
@@ -51,14 +52,12 @@ export class AppointmentsController {
     required: false,
     description: 'Filtrar por ID del barbero',
     type: Number,
-    example: 4,
   })
   @ApiQuery({
     name: 'search',
     required: false,
     description: 'Buscar por nombre del cliente',
     type: String,
-    example: 'Juan',
   })
   @ApiQuery({
     name: 'start_date',
@@ -66,7 +65,6 @@ export class AppointmentsController {
     description:
       'Desde fecha (inclusive, formato ISO: YYYY-MM-DD o YYYY-MM-DDTHH:mm:ss)',
     type: String,
-    example: '2026-06-01',
   })
   @ApiQuery({
     name: 'end_date',
@@ -74,21 +72,18 @@ export class AppointmentsController {
     description:
       'Hasta fecha (inclusive, formato ISO: YYYY-MM-DD o YYYY-MM-DDTHH:mm:ss)',
     type: String,
-    example: '2026-06-30',
   })
   @ApiQuery({
     name: 'with_cancelled',
     required: false,
     description: 'Incluir citas canceladas',
     type: Boolean,
-    example: false,
   })
   @ApiQuery({
     name: 'order',
     required: false,
     description: 'Ordenar por fecha de inicio (ASC o DESC)',
     type: String,
-    example: 'DESC',
   })
   @ApiResponse({
     status: 200,
@@ -153,8 +148,14 @@ export class AppointmentsController {
   async getAvailableSlots(
     @Query('barberId', ParseIntPipe) barberId: number,
     @Query('date') date: string,
+    @Query('serviceId', new ParseIntPipe({ optional: true }))
+    serviceId?: number,
   ): Promise<string[]> {
-    return this.appointmentsService.getAvailableSlots(barberId, date);
+    return this.appointmentsService.getAvailableSlots(
+      barberId,
+      date,
+      serviceId,
+    );
   }
 
   @Post()
@@ -228,7 +229,10 @@ export class AppointmentsController {
     description: 'Servicio actualizado exitosamente',
     type: Appointment,
   })
-  @ApiResponse({ status: 400, description: 'Solo disponible en estado CONFIRMED' })
+  @ApiResponse({
+    status: 400,
+    description: 'Solo disponible en estado CONFIRMED',
+  })
   @ApiResponse({ status: 401, description: 'No autorizado' })
   @ApiResponse({ status: 404, description: 'Cita no encontrada' })
   async updateService(
