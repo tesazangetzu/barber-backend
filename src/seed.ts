@@ -18,114 +18,124 @@ async function bootstrap() {
     const adminRepo = dataSource.getRepository(AdminUser);
     const scheduleRepo = dataSource.getRepository(BarberSchedule);
 
-    // // 1. Clean database
-    // console.log('🧹 Cleaning database...');
-    // await dataSource.query(
-    //   'TRUNCATE TABLE "barber_schedules", "appointments", "barbers", "services", "admin_users" CASCADE;',
-    // );
+    // 1. Clean database
+    console.log('🧹 Cleaning database...');
+    await dataSource.query(
+      'TRUNCATE TABLE "barber_schedules", "appointments", "barbers", "services", "admin_users" CASCADE;',
+    );
 
-    // // 2. Seed Services
-    // console.log('✂️ Seeding services...');
-    // const servicesData = [
-    //   {
-    //     name: 'Corte de Cabello Clásico',
-    //     description:
-    //       'Corte tradicional de caballero con lavado, secado y peinado con cera premium.',
-    //     duration_minutes: 30,
-    //     price: 15.0,
-    //     is_active: true,
-    //   },
-    //   {
-    //     name: 'Corte de Cabello + Barba',
-    //     description:
-    //       'Corte de cabello personalizado más arreglo, perfilado e hidratación de barba.',
-    //     duration_minutes: 45,
-    //     price: 22.0,
-    //     is_active: true,
-    //   },
-    //   {
-    //     name: 'Perfilado de Barba con Toalla Caliente',
-    //     description:
-    //       'Afeitado tradicional con navaja libre, toalla caliente y bálsamo calmante.',
-    //     duration_minutes: 30,
-    //     price: 12.0,
-    //     is_active: true,
-    //   },
-    //   {
-    //     name: 'Diseño de Corte Completo / Cejas',
-    //     description:
-    //       'Corte moderno con degradado (fade), diseño de líneas y perfilado de cejas.',
-    //     duration_minutes: 60,
-    //     price: 28.0,
-    //     is_active: true,
-    //   },
-    // ];
+    // 2. Seed Services
+    console.log('✂️ Seeding services...');
+    const servicesData = [
+      {
+        name: 'Corte clásico',
+        description: 'Corte de cabello tradicional con acabado limpio',
+        duration_minutes: 40,
+        price: 25.0,
+        is_active: true,
+      },
+      {
+        name: 'Corte clásico + barba',
+        description:
+          'Corte de cabello tradicional con acabado limpio + corte y perfilado tradicional de la barba',
+        duration_minutes: 50,
+        price: 30.0,
+        is_active: true,
+      },
+      {
+        name: 'Corte Urbano + barba',
+        description:
+          'Corte urbano a elección + Corte y perfilado tradicional de la barba',
+        duration_minutes: 50,
+        price: 30.0,
+        is_active: true,
+      },
+      {
+        name: 'Barba',
+        description: 'Corte y perfilado tradicional',
+        duration_minutes: 20,
+        price: 10.0,
+        is_active: true,
+      },
+      {
+        name: 'Perfilado de cejas',
+        description: 'Perfilado o limpieza de cejas',
+        duration_minutes: 15,
+        price: 5.0,
+        is_active: true,
+      },
+      {
+        name: 'Corte a Domicilio',
+        description:
+          'Según el lugar del domicilio varía el costo del servicio, comunicarse directamente con el barbero',
+        duration_minutes: 60,
+        price: 40.0,
+        is_active: true,
+      },
+      {
+        name: 'Corte urbano',
+        description:
+          'Skin fade: Low Fade, Mid Fade, High Fade / blow Out / Taper Fade / Burst Fade / Mohicano / Entre otros',
+        duration_minutes: 40,
+        price: 25.0,
+        is_active: true,
+      },
+    ];
 
-    // const services = await serviceRepo.save(serviceRepo.create(servicesData));
-    // console.log(`✅ Seeded ${services.length} services.`);
+    const services = await serviceRepo.save(serviceRepo.create(servicesData));
+    console.log(`✅ Seeded ${services.length} services.`);
 
-    // // 3. Seed Barbers
-    // console.log('💈 Seeding barbers...');
+    // 3. Seed Barbers
+    console.log('💈 Seeding barbers...');
     const saltRounds = 10;
-    // const passwordHash = await bcrypt.hash('barberpassword123', saltRounds);
+    const barberPasswordHash = await bcrypt.hash('barber123', saltRounds);
 
-    // const barbersData = [
-    //   {
-    //     name: 'Carlos Mendoza',
-    //     email: 'carlos@barberia.com',
-    //     password_hash: passwordHash,
-    //     phone: '+525512345678',
-    //     is_active: true,
-    //   },
-    //   {
-    //     name: 'Mateo Silva',
-    //     email: 'mateo@barberia.com',
-    //     password_hash: passwordHash,
-    //     phone: '+525587654321',
-    //     is_active: true,
-    //   },
-    // ];
+    const barbersData = [
+      {
+        name: 'Miguel Segura',
+        email: 'miguel.segura@goodshands.com',
+        password_hash: barberPasswordHash,
+        phone: '+5491123456789',
+        is_active: true,
+      },
+    ];
 
-    // const barbers = await barberRepo.save(barberRepo.create(barbersData));
-    // console.log(`✅ Seeded ${barbers.length} barbers.`);
+    const barbers = await barberRepo.save(barberRepo.create(barbersData));
+    console.log(`✅ Seeded ${barbers.length} barbers.`);
 
     // 4. Seed Superuser Admin
     console.log('👑 Seeding superuser admin...');
-    const superuserPasswordHash = await bcrypt.hash(
-      'superuser123@',
-      saltRounds,
-    );
+    const adminPasswordHash = await bcrypt.hash('superuser123@', saltRounds);
     const adminUser = adminRepo.create({
       email: 'admin@superuser.com',
-      password_hash: superuserPasswordHash,
+      password_hash: adminPasswordHash,
       name: 'Superuser',
       is_active: true,
     });
     await adminRepo.save(adminUser);
     console.log('✅ Superuser admin seeded: admin@superuser.com');
 
-    // // 5. Seed Schedules
-    // console.log('📅 Seeding schedules for barbers...');
-    // const schedulesData: Partial<BarberSchedule>[] = [];
+    // 5. Seed Schedules
+    console.log('📅 Seeding schedules for barbers...');
+    const schedulesData: Partial<BarberSchedule>[] = [];
 
-    // for (const barber of barbers) {
-    //   // Monday (1) to Saturday (6)
-    //   for (let day = 1; day <= 6; day++) {
-    //     schedulesData.push({
-    //       barber_id: barber.id,
-    //       day_of_week: day,
-    //       start_hour: '09:00:00',
-    //       end_hour: '19:00:00',
-    //       break_start: '13:00:00',
-    //       break_end: '14:00:00',
-    //     });
-    //   }
-    // }
+    for (const barber of barbers) {
+      for (let day = 1; day <= 6; day++) {
+        schedulesData.push({
+          barber_id: barber.id,
+          day_of_week: day,
+          start_hour: '09:00:00',
+          end_hour: '21:00:00',
+          break_start: '13:00:00',
+          break_end: '14:00:00',
+        });
+      }
+    }
 
-    // const schedules = await scheduleRepo.save(
-    //   scheduleRepo.create(schedulesData),
-    // );
-    // console.log(`✅ Seeded ${schedules.length} schedules.`);
+    const schedules = await scheduleRepo.save(
+      scheduleRepo.create(schedulesData),
+    );
+    console.log(`✅ Seeded ${schedules.length} schedules.`);
 
     console.log('🎉 Database seeding completed successfully!');
   } catch (error) {
