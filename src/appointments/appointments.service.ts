@@ -14,7 +14,7 @@ import {
   ILike,
   Raw,
 } from 'typeorm';
-import { toZonedTime } from 'date-fns-tz';
+import { toZonedTime, fromZonedTime, format } from 'date-fns-tz';
 import {
   Appointment,
   AppointmentStatus,
@@ -100,14 +100,9 @@ export class AppointmentsService {
 
   async findTodayByBarber(barberId: number): Promise<Appointment[]> {
     const now = new Date();
-    const nowLima = toZonedTime(now, TIMEZONE);
-    const y = nowLima.getFullYear();
-    const M = String(nowLima.getMonth() + 1).padStart(2, '0');
-    const D = String(nowLima.getDate()).padStart(2, '0');
-    const todayStr = `${y}-${M}-${D}`;
-
-    const dayStart = new Date(`${todayStr}T00:00:00-05:00`);
-    const dayEnd = new Date(`${todayStr}T23:59:59.999-05:00`);
+    const todayStr = format(now, 'yyyy-MM-dd', { timeZone: TIMEZONE });
+    const dayStart = fromZonedTime(`${todayStr}T00:00:00`, TIMEZONE);
+    const dayEnd = fromZonedTime(`${todayStr}T23:59:59`, TIMEZONE);
 
     return this.appointmentRepository.find({
       where: {
@@ -125,19 +120,14 @@ export class AppointmentsService {
     dateStr: string,
     serviceId?: number,
   ): Promise<string[]> {
-    const dayStart = new Date(`${dateStr}T00:00:00-05:00`);
-    const dayEnd = new Date(`${dateStr}T23:59:59.999-05:00`);
+    const dayStart = fromZonedTime(`${dateStr}T00:00:00`, TIMEZONE);
+    const dayEnd = fromZonedTime(`${dateStr}T23:59:59`, TIMEZONE);
+    const dayOfWeek = toZonedTime(dayStart, TIMEZONE).getDay();
 
     const schedule = await this.scheduleRepository.findOne({
-      where: {
-        barber_id: barberId,
-        day_of_week: dayStart.getUTCDay(),
-      },
+      where: { barber_id: barberId, day_of_week: dayOfWeek },
     });
-
-    if (!schedule) {
-      return [];
-    }
+    if (!schedule) return [];
 
     const appointments = await this.appointmentRepository.find({
       where: {
@@ -146,9 +136,7 @@ export class AppointmentsService {
         start_time: LessThanOrEqual(dayEnd),
         end_time: MoreThanOrEqual(dayStart),
       },
-      order: {
-        start_time: 'ASC',
-      },
+      order: { start_time: 'ASC' },
     });
 
     let durationMinutes = 30;
@@ -156,18 +144,22 @@ export class AppointmentsService {
       const service = await this.serviceRepository.findOne({
         where: { id: serviceId, is_active: true },
       });
-      if (service) {
-        durationMinutes = service.duration_minutes;
-      }
+      if (service) durationMinutes = service.duration_minutes;
     }
 
-    const workStart = new Date(`${dateStr}T${schedule.start_hour}-05:00`);
-    const workEnd = new Date(`${dateStr}T${schedule.end_hour}-05:00`);
+    const workStart = fromZonedTime(
+      `${dateStr}T${schedule.start_hour}`,
+      TIMEZONE,
+    );
+    const workEnd = fromZonedTime(
+      `${dateStr}T${schedule.end_hour}`,
+      TIMEZONE,
+    );
     const breakStart = schedule.break_start
-      ? new Date(`${dateStr}T${schedule.break_start}-05:00`)
+      ? fromZonedTime(`${dateStr}T${schedule.break_start}`, TIMEZONE)
       : null;
     const breakEnd = schedule.break_end
-      ? new Date(`${dateStr}T${schedule.break_end}-05:00`)
+      ? fromZonedTime(`${dateStr}T${schedule.break_end}`, TIMEZONE)
       : null;
 
     const SLOT_INTERVAL_MINUTES = 30;
@@ -211,11 +203,7 @@ export class AppointmentsService {
       }
 
       if (!isOverlapping) {
-        const h = (slotStart.getUTCHours() - 5 + 24) % 24;
-        const m = slotStart.getUTCMinutes();
-        slots.push(
-          `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`,
-        );
+        slots.push(format(slotStart, 'HH:mm', { timeZone: TIMEZONE }));
       }
 
       current = new Date(current.getTime() + SLOT_INTERVAL_MINUTES * 60 * 1000);
@@ -257,7 +245,7 @@ export class AppointmentsService {
 
     let appStart: Date;
     try {
-      appStart = toZonedTime(start_time, TIMEZONE);
+      appStart = fromZonedTime(start_time, TIMEZONE);
     } catch {
       throw new BadRequestException('Formato de fecha inválido.');
     }
@@ -266,7 +254,6 @@ export class AppointmentsService {
       appStart.getTime() + service.duration_minutes * 60 * 1000,
     );
 
-    // 2. Perform transactional double-booking prevention
     return this.dataSource.transaction(async (entityManager) => {
       const conflicting = await entityManager
         .createQueryBuilder(Appointment, 'appointment')
@@ -277,10 +264,7 @@ export class AppointmentsService {
         })
         .andWhere(
           'appointment.start_time < :appEnd AND appointment.end_time > :appStart',
-          {
-            appStart,
-            appEnd,
-          },
+          { appStart, appEnd },
         )
         .getOne();
 
@@ -290,9 +274,9 @@ export class AppointmentsService {
         );
       }
 
-      const dayOfWeek = appStart.getDay();
+      const dayOfWeek = toZonedTime(appStart, TIMEZONE).getDay();
       const schedule = await entityManager.findOne(BarberSchedule, {
-        where: { barber_id: barber_id, day_of_week: dayOfWeek },
+        where: { barber_id, day_of_week: dayOfWeek },
       });
 
       if (!schedule) {
@@ -301,13 +285,15 @@ export class AppointmentsService {
         );
       }
 
-      const y = appStart.getFullYear();
-      const M = String(appStart.getMonth() + 1).padStart(2, '0');
-      const D = String(appStart.getDate()).padStart(2, '0');
-      const limaDate = `${y}-${M}-${D}`;
-
-      const workStart = new Date(`${limaDate}T${schedule.start_hour}-05:00`);
-      const workEnd = new Date(`${limaDate}T${schedule.end_hour}-05:00`);
+      const limaDate = format(appStart, 'yyyy-MM-dd', { timeZone: TIMEZONE });
+      const workStart = fromZonedTime(
+        `${limaDate}T${schedule.start_hour}`,
+        TIMEZONE,
+      );
+      const workEnd = fromZonedTime(
+        `${limaDate}T${schedule.end_hour}`,
+        TIMEZONE,
+      );
 
       if (appStart < workStart || appEnd > workEnd) {
         throw new BadRequestException(
@@ -316,10 +302,14 @@ export class AppointmentsService {
       }
 
       if (schedule.break_start && schedule.break_end) {
-        const breakStart = new Date(
-          `${limaDate}T${schedule.break_start}-05:00`,
+        const breakStart = fromZonedTime(
+          `${limaDate}T${schedule.break_start}`,
+          TIMEZONE,
         );
-        const breakEnd = new Date(`${limaDate}T${schedule.break_end}-05:00`);
+        const breakEnd = fromZonedTime(
+          `${limaDate}T${schedule.break_end}`,
+          TIMEZONE,
+        );
 
         if (appStart < breakEnd && appEnd > breakStart) {
           throw new BadRequestException(
