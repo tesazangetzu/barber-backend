@@ -25,6 +25,11 @@ import { Barber } from '../barbers/entities/barber.entity';
 import { Service } from '../services/entities/service.entity';
 import { BarberSchedule } from '../schedules/entities/schedule.entity';
 import { CreateAppointmentDto } from './dto/create-appointment.dto';
+import { MailService } from '../mail/mail.service';
+import {
+  newAppointmentHtml,
+  newAppointmentSubject,
+} from '../mail/templates/new-appointment.template';
 
 const TIMEZONE = 'America/Lima';
 
@@ -40,6 +45,7 @@ export class AppointmentsService {
     @InjectRepository(BarberSchedule)
     private readonly scheduleRepository: Repository<BarberSchedule>,
     private readonly dataSource: DataSource,
+    private readonly mailService: MailService,
   ) {}
 
   async findAll(filters?: {
@@ -254,7 +260,7 @@ export class AppointmentsService {
       appStart.getTime() + service.duration_minutes * 60 * 1000,
     );
 
-    return this.dataSource.transaction(async (entityManager) => {
+    const appointment = await this.dataSource.transaction(async (entityManager) => {
       const conflicting = await entityManager
         .createQueryBuilder(Appointment, 'appointment')
         .setLock('pessimistic_write')
@@ -339,6 +345,27 @@ export class AppointmentsService {
         relations: ['barber', 'service'],
       }) as Promise<Appointment>;
     });
+
+    const limaDate = format(appointment.start_time, 'yyyy-MM-dd', { timeZone: TIMEZONE });
+    const startLima = format(appointment.start_time, 'HH:mm', { timeZone: TIMEZONE });
+    const endLima = format(appointment.end_time, 'HH:mm', { timeZone: TIMEZONE });
+
+    this.mailService.sendEmail({
+      to: appointment.barber.email,
+      subject: newAppointmentSubject(),
+      html: newAppointmentHtml({
+        barberName: appointment.barber.name,
+        clientName: appointment.client_name,
+        clientPhone: appointment.client_phone,
+        clientEmail: appointment.client_email ?? undefined,
+        serviceName: appointment.service.name,
+        date: limaDate,
+        startTime: startLima,
+        endTime: endLima,
+      }),
+    });
+
+    return appointment;
   }
 
   async updateStatus(

@@ -88,7 +88,7 @@ async function bootstrap() {
     // 3. Seed Barbers
     console.log('💈 Seeding barbers...');
     const saltRounds = 10;
-    const barberPasswordHash = await bcrypt.hash('barber123', saltRounds);
+    const barberPasswordHash = await bcrypt.hash('secret123', saltRounds);
 
     const barbersData = [
       {
