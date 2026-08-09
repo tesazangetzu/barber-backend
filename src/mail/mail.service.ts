@@ -1,26 +1,27 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Resend } from 'resend';
+
+const BREVO_URL = 'https://api.brevo.com/v3/smtp/email';
 
 @Injectable()
 export class MailService {
-  private readonly resend: Resend;
   private readonly logger = new Logger(MailService.name);
-  private readonly fromEmail: string;
+  private readonly fromEmail: string | undefined;
+  private readonly fromName: string;
 
   constructor(private readonly configService: ConfigService) {
-    const apiKey = this.configService.get<string>('RESEND_API_KEY');
-    this.fromEmail =
-      this.configService.get<string>('RESEND_FROM_EMAIL') ||
-      'noreply@barberia.com';
+    this.fromEmail = this.configService.get<string>('BREVO_FROM_EMAIL');
+    this.fromName =
+      this.configService.get<string>('BREVO_FROM_NAME') || "God's Hands";
 
-    if (!apiKey) {
+    if (
+      !this.configService.get<string>('BREVO_API_KEY') ||
+      !this.fromEmail
+    ) {
       this.logger.warn(
-        'RESEND_API_KEY no está configurada. Los correos no se enviarán.',
+        'BREVO_API_KEY o BREVO_FROM_EMAIL no están configuradas. Los correos no se enviarán.',
       );
     }
-
-    this.resend = new Resend(apiKey ?? '');
   }
 
   async sendEmail(options: {
@@ -28,7 +29,9 @@ export class MailService {
     subject: string;
     html: string;
   }): Promise<void> {
-    if (!this.configService.get<string>('RESEND_API_KEY')) {
+    const apiKey = this.configService.get<string>('BREVO_API_KEY');
+
+    if (!apiKey || !this.fromEmail) {
       this.logger.warn(
         `[EMAIL SIMULADO] Para: ${options.to} | Asunto: ${options.subject}`,
       );
@@ -36,20 +39,41 @@ export class MailService {
     }
 
     try {
-      const { error } = await this.resend.emails.send({
-        from: this.fromEmail,
-        to: options.to,
-        subject: options.subject,
-        html: options.html,
+      const response = await fetch(BREVO_URL, {
+        method: 'POST',
+        headers: {
+          'api-key': apiKey,
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        body: JSON.stringify({
+          sender: {
+            email: this.fromEmail,
+            name: this.fromName,
+          },
+          to: [{ email: options.to }],
+          subject: options.subject,
+          htmlContent: options.html,
+        }),
       });
 
-      if (error) {
+      if (!response.ok) {
+        const body = (await response.json().catch(() => ({}))) as {
+          message?: string;
+          code?: string;
+          [key: string]: unknown;
+        };
         this.logger.error(
-          `Error al enviar email a ${options.to}: ${error.message}`,
+          `Error al enviar email a ${options.to}: ${body.message ?? body.code ?? response.status}`,
         );
-      } else {
-        this.logger.log(`Email enviado exitosamente a ${options.to}`);
+        return;
       }
+
+      const body = (await response.json().catch(() => ({}))) as {
+        messageId?: string;
+        [key: string]: unknown;
+      };
+      this.logger.log(`Email enviado exitosamente a ${options.to}${body.messageId ? ` (${body.messageId})` : ''}`);
     } catch (err) {
       this.logger.error(
         `Error al enviar email a ${options.to}: ${(err as Error).message}`,
