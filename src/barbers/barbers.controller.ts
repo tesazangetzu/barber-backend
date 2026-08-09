@@ -7,14 +7,19 @@ import {
   Body,
   Patch,
   Delete,
+  Req,
+  UseGuards,
+  UnauthorizedException,
   ClassSerializerInterceptor,
   UseInterceptors,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiParam } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBearerAuth } from '@nestjs/swagger';
 import { BarbersService } from './barbers.service';
 import { Barber } from './entities/barber.entity';
 import { CreateBarberDto } from './dto/create-barber.dto';
 import { UpdateBarberDto } from './dto/update-barber.dto';
+import { UpdateBarberContactEmailDto } from './dto/update-barber-contact-email.dto';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
 @ApiTags('barbers')
 @Controller('barbers')
@@ -76,5 +81,25 @@ export class BarbersController {
   @ApiResponse({ status: 204, description: 'Barbero desactivado' })
   async remove(@Param('id', ParseIntPipe) id: number): Promise<void> {
     return this.barbersService.remove(id);
+  }
+
+  @Patch('me/contact-email')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Actualizar email de contacto del barbero autenticado' })
+  @ApiResponse({
+    status: 200,
+    description: 'Email de contacto actualizado',
+    type: Barber,
+  })
+  @ApiResponse({ status: 401, description: 'No autorizado' })
+  async updateMyContactEmail(
+    @Req() req: { user: { id: number; role?: string } },
+    @Body() dto: UpdateBarberContactEmailDto,
+  ): Promise<Barber> {
+    if (req.user?.role !== 'barber') {
+      throw new UnauthorizedException('Solo barberos pueden actualizar su email de contacto');
+    }
+    return this.barbersService.updateContactEmail(req.user.id, dto.contact_email);
   }
 }

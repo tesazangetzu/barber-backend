@@ -117,4 +117,11 @@ export class BarbersService {
     }
     return barber;
   }
+
+  async updateContactEmail(id: number, contactEmail: string): Promise<Barber> {
+    const barber = await this.findOneById(id);
+    barber.contact_email = contactEmail;
+    await this.barberRepository.save(barber);
+    return this.findOneById(id);
+  }
 }
