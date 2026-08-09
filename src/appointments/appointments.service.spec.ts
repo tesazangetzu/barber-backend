@@ -12,6 +12,10 @@ import { Barber } from '../barbers/entities/barber.entity';
 import { Service } from '../services/entities/service.entity';
 import { BarberSchedule } from '../schedules/entities/schedule.entity';
 import { BadRequestException } from '@nestjs/common';
+import { MailService } from '../mail/mail.service';
+import {
+  newAppointmentClientSubject,
+} from '../mail/templates/new-appointment-client.template';
 
 describe('AppointmentsService', () => {
   let service: AppointmentsService;
@@ -38,6 +42,10 @@ describe('AppointmentsService', () => {
 
   const mockScheduleRepository = {
     findOne: jest.fn(),
+  };
+
+  const mockMailService = {
+    sendEmail: jest.fn().mockResolvedValue(undefined),
   };
 
   // Mocking QueryBuilder specifically for the pessimistic write lock double-booking prevention check
@@ -82,6 +90,10 @@ describe('AppointmentsService', () => {
         {
           provide: DataSource,
           useValue: mockDataSource,
+        },
+        {
+          provide: MailService,
+          useValue: mockMailService,
         },
       ],
     }).compile();
@@ -131,6 +143,9 @@ describe('AppointmentsService', () => {
     const mockBarber = {
       id: 1,
       name: 'Carlos Mendoza',
+      email: 'carlos.mendoza@barberia.com',
+      contact_email: 'contacto.carlos@barberia.com',
+      phone: '+525511223344',
       is_active: true,
     };
 
@@ -162,6 +177,8 @@ describe('AppointmentsService', () => {
         status: AppointmentStatus.CONFIRMED,
         payment_status: PaymentStatus.PENDING,
         payment_method: PaymentMethod.LOCAL,
+        barber: { ...mockBarber },
+        service: { ...mockService },
       };
 
       mockEntityManager.findOne.mockImplementation((entity, options) => {
@@ -186,6 +203,17 @@ describe('AppointmentsService', () => {
       expect(result).toBeDefined();
       expect(result.id).toBe(42);
       expect(result.client_name).toBe('Alejandro Ruiz');
+      expect(mockMailService.sendEmail).toHaveBeenCalledTimes(2);
+      const clientMail = mockMailService.sendEmail.mock.calls.find(
+        (args) => args[0].to === 'alejandro@gmail.com',
+      );
+      expect(clientMail).toBeDefined();
+      expect(clientMail[0].subject).toBe(newAppointmentClientSubject());
+      const barberMail = mockMailService.sendEmail.mock.calls.find(
+        (args) => args[0].to === 'contacto.carlos@barberia.com',
+      );
+      expect(barberMail).toBeDefined();
+      expect(barberMail[0].subject).toBe('Nueva cita registrada');
     });
 
     it('should throw BadRequestException if another appointment conflicts (double-booking prevention)', async () => {
