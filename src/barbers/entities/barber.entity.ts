@@ -21,6 +21,9 @@ export class Barber {
   @Column({ type: 'varchar', length: 20, nullable: true })
   phone: string;
 
+  @Column({ type: 'varchar', length: 150, nullable: true })
+  contact_email: string;
+
   @Column({ type: 'boolean', default: true })
   is_active: boolean;
 
