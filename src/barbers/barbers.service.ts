@@ -20,7 +20,7 @@ export class BarbersService {
   async findAll(): Promise<Barber[]> {
     return this.barberRepository.find({
       where: { is_active: true },
-      select: ['id', 'name', 'email', 'phone', 'is_active'],
+      select: ['id', 'name', 'email', 'phone', 'contact_email', 'is_active'],
     });
   }
 
@@ -43,13 +43,14 @@ export class BarbersService {
       email: createBarberDto.email,
       password_hash,
       phone: createBarberDto.phone,
+      contact_email: createBarberDto.contact_email,
       is_active: true,
     });
 
     const saved = await this.barberRepository.save(barber);
     const result = await this.barberRepository.findOne({
       where: { id: saved.id },
-      select: ['id', 'name', 'email', 'phone', 'is_active'],
+      select: ['id', 'name', 'email', 'phone', 'contact_email', 'is_active'],
     });
 
     if (!result) {
@@ -81,13 +82,15 @@ export class BarbersService {
       barber.email = updateBarberDto.email;
     if (typeof updateBarberDto.phone !== 'undefined')
       barber.phone = updateBarberDto.phone;
+    if (typeof updateBarberDto.contact_email !== 'undefined')
+      barber.contact_email = updateBarberDto.contact_email;
     if (typeof updateBarberDto.is_active !== 'undefined')
       barber.is_active = updateBarberDto.is_active;
 
     const saved = await this.barberRepository.save(barber);
     const result = await this.barberRepository.findOne({
       where: { id: saved.id },
-      select: ['id', 'name', 'email', 'phone', 'is_active'],
+      select: ['id', 'name', 'email', 'phone', 'contact_email', 'is_active'],
     });
     if (!result) {
       throw new NotFoundException('Error al obtener el barbero actualizado');
@@ -107,7 +110,7 @@ export class BarbersService {
   async findOneById(id: number): Promise<Barber> {
     const barber = await this.barberRepository.findOne({
       where: { id },
-      select: ['id', 'name', 'email', 'phone', 'is_active'],
+      select: ['id', 'name', 'email', 'phone', 'contact_email', 'is_active'],
     });
     if (!barber) {
       throw new NotFoundException(`Barbero con ID ${id} no encontrado`);
