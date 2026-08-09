@@ -26,4 +26,9 @@ export class CreateBarberDto {
   @IsOptional()
   @IsString()
   phone?: string;
+
+  @ApiProperty({ example: 'contacto@example.com', required: false })
+  @IsOptional()
+  @IsEmail()
+  contact_email?: string;
 }
