@@ -18,7 +18,7 @@ export class AuthService {
 
   async login(loginDto: LoginDto): Promise<{
     access_token: string;
-    barber: { id: number; name: string; email: string };
+    barber: { id: number; name: string; email: string; contact_email: string | null };
   }> {
     const barber = await this.barbersService.findOneByEmail(loginDto.email);
 
@@ -41,6 +41,7 @@ export class AuthService {
         id: barber.id,
         name: barber.name,
         email: barber.email,
+        contact_email: barber.contact_email ?? null,
       },
     };
   }
