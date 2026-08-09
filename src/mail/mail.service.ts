@@ -14,10 +14,7 @@ export class MailService {
     this.fromName =
       this.configService.get<string>('BREVO_FROM_NAME') || "God's Hands";
 
-    if (
-      !this.configService.get<string>('BREVO_API_KEY') ||
-      !this.fromEmail
-    ) {
+    if (!this.configService.get<string>('BREVO_API_KEY') || !this.fromEmail) {
       this.logger.warn(
         'BREVO_API_KEY o BREVO_FROM_EMAIL no están configuradas. Los correos no se enviarán.',
       );
@@ -73,7 +70,9 @@ export class MailService {
         messageId?: string;
         [key: string]: unknown;
       };
-      this.logger.log(`Email enviado exitosamente a ${options.to}${body.messageId ? ` (${body.messageId})` : ''}`);
+      this.logger.log(
+        `Email enviado exitosamente a ${options.to}${body.messageId ? ` (${body.messageId})` : ''}`,
+      );
     } catch (err) {
       this.logger.error(
         `Error al enviar email a ${options.to}: ${(err as Error).message}`,
