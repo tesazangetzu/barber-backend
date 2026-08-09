@@ -30,6 +30,10 @@ import {
   newAppointmentHtml,
   newAppointmentSubject,
 } from '../mail/templates/new-appointment.template';
+import {
+  newAppointmentClientHtml,
+  newAppointmentClientSubject,
+} from '../mail/templates/new-appointment-client.template';
 
 const TIMEZONE = 'America/Lima';
 
@@ -350,20 +354,41 @@ export class AppointmentsService {
     const startLima = format(appointment.start_time, 'HH:mm', { timeZone: TIMEZONE });
     const endLima = format(appointment.end_time, 'HH:mm', { timeZone: TIMEZONE });
 
-    this.mailService.sendEmail({
-      to: appointment.barber.email,
-      subject: newAppointmentSubject(),
-      html: newAppointmentHtml({
-        barberName: appointment.barber.name,
-        clientName: appointment.client_name,
-        clientPhone: appointment.client_phone,
-        clientEmail: appointment.client_email ?? undefined,
-        serviceName: appointment.service.name,
-        date: limaDate,
-        startTime: startLima,
-        endTime: endLima,
-      }),
-    });
+    const templateData = {
+      barberName: appointment.barber.name,
+      clientName: appointment.client_name,
+      clientPhone: appointment.client_phone,
+      clientEmail: appointment.client_email ?? undefined,
+      serviceName: appointment.service.name,
+      date: limaDate,
+      startTime: startLima,
+      endTime: endLima,
+    };
+
+    if (appointment.client_email) {
+      this.mailService
+        .sendEmail({
+          to: appointment.client_email,
+          subject: newAppointmentClientSubject(),
+          html: newAppointmentClientHtml({
+            clientName: appointment.client_name,
+            barberName: appointment.barber.name,
+            serviceName: appointment.service.name,
+            date: limaDate,
+            startTime: startLima,
+            endTime: endLima,
+          }),
+        })
+        .catch(() => {});
+    }
+
+    this.mailService
+      .sendEmail({
+        to: appointment.barber.contact_email ?? appointment.barber.email,
+        subject: newAppointmentSubject(),
+        html: newAppointmentHtml(templateData),
+      })
+      .catch(() => {});
 
     return appointment;
   }
