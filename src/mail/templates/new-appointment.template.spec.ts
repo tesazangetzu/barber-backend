@@ -1,4 +1,7 @@
-import { newAppointmentHtml, newAppointmentSubject } from './new-appointment.template';
+import {
+  newAppointmentHtml,
+  newAppointmentSubject,
+} from './new-appointment.template';
 
 const PAYLOAD = '<script>alert(1)</script>';
 
@@ -48,8 +51,10 @@ describe('newAppointment.template', () => {
     expect(html).toContain('#b0b0b0');
   });
 
-  it('incluye el footer personalizado de God\'s Hands', () => {
+  it("incluye el footer personalizado de God's Hands", () => {
     const html = newAppointmentHtml(maliciousData);
-    expect(html).toContain("God's Hands Barbería — Sistema de Gestión de Citas");
+    expect(html).toContain(
+      "God's Hands Barbería — Sistema de Gestión de Citas",
+    );
   });
 });

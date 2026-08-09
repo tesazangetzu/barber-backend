@@ -8,7 +8,7 @@ const PAYLOAD = '<script>alert(1)</script>';
 const maliciousData = {
   clientName: PAYLOAD,
   barberName: '<b>"barber"</b>',
-  serviceName: "<img src=x onerror=alert(1)>",
+  serviceName: '<img src=x onerror=alert(1)>',
   date: '&fecha',
   startTime: '10:00',
   endTime: '11:00',
@@ -43,9 +43,11 @@ describe('new-appointment-client.template', () => {
     expect(html).toContain('#b0b0b0');
   });
 
-  it('incluye el footer personalizado de God\'s Hands', () => {
+  it("incluye el footer personalizado de God's Hands", () => {
     const html = newAppointmentClientHtml(maliciousData);
-    expect(html).toContain("God's Hands Barbería — Sistema de Gestión de Citas");
+    expect(html).toContain(
+      "God's Hands Barbería — Sistema de Gestión de Citas",
+    );
   });
 
   it('no incluye teléfono ni email del barbero', () => {
