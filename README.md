@@ -104,7 +104,7 @@ Al crear una cita se envían dos correos (modo no-bloqueante):
 - **Cliente:** a `client_email` del checkout, asunto "Cita confirmada" (`src/mail/templates/new-appointment-client.template.ts`).
 - **Barbero:** a `contact_email` del barbero (fallback a su `email` de login si no lo completó) (`src/mail/templates/new-appointment.template.ts`).
 
-Los envíos usan `MailService.sendEmail` (`.catch(() => {})`): la creación de la cita nunca se bloquea por el correo. Sin `RESEND_API_KEY` el servicio registra un log `[EMAIL SIMULADO]`.
+Los envíos usan `MailService.sendEmail` (`.catch(() => {})`): la creación de la cita nunca se bloquea por el correo. El servicio llama a la API REST de Brevo (`POST https://api.brevo.com/v3/smtp/email`) con las variables `BREVO_API_KEY`, `BREVO_FROM_EMAIL` (remitente verificado en Brevo) y opcional `BREVO_FROM_NAME` (default `God's Hands`). Si falta `BREVO_API_KEY` o `BREVO_FROM_EMAIL`, el servicio registra un log `[EMAIL SIMULADO]` y no envía.
 
 Nueva columna `contact_email` en `barbers` (varchar 150, nullable, no unique):
 
