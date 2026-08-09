@@ -96,6 +96,7 @@ async function bootstrap() {
         email: 'miguel.segura@goodshands.com',
         password_hash: barberPasswordHash,
         phone: '+5491123456789',
+        contact_email: 'contacto.miguel@goodshands.com',
         is_active: true,
       },
     ];
