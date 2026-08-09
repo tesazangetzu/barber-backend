@@ -96,3 +96,25 @@ Nest is an MIT-licensed open source project. It can grow thanks to the sponsors 
 ## License
 
 Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+
+## Notificaciones por email
+
+Al crear una cita se envían dos correos (modo no-bloqueante):
+
+- **Cliente:** a `client_email` del checkout, asunto "Cita confirmada" (`src/mail/templates/new-appointment-client.template.ts`).
+- **Barbero:** a `contact_email` del barbero (fallback a su `email` de login si no lo completó) (`src/mail/templates/new-appointment.template.ts`).
+
+Los envíos usan `MailService.sendEmail` (`.catch(() => {})`): la creación de la cita nunca se bloquea por el correo. Sin `RESEND_API_KEY` el servicio registra un log `[EMAIL SIMULADO]`.
+
+Nueva columna `contact_email` en `barbers` (varchar 150, nullable, no unique):
+
+```sql
+-- Aplicar vía psql (docker-compose, base barberia)
+ALTER TABLE barbers ADD COLUMN contact_email varchar(150) NULL;
+```
+
+Script idempotente disponible en `migrations/2026-08-09-add-contact_email.sql`.
+
+Autoservicio del barbero: `PATCH /barbers/me/contact-email` (JWT, rol barber) actualiza `solo` `contact_email`.
+
+> No hay runner automático de migraciones: el DDL se aplica manualmente (consistentente con `DATABASE_SYNCHRONIZE=false`).
